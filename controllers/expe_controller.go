@@ -74,7 +74,7 @@ func GetExperiences(c *gin.Context) {
 	query.Count(&totalRows)
 
 	pagestr := c.DefaultQuery("page", "1")
-	limitstr := c.DefaultQuery("limit", "6")
+	limitstr := c.DefaultQuery("limit", "10")
 
 	page, errPage := strconv.Atoi(pagestr)
 	if errPage != nil || page < 1 {
