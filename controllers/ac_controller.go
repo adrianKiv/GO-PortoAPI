@@ -22,6 +22,24 @@ func CreateAC(c *gin.Context) {
 		return
 	}
 
+	if input.SortOrder < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"message": "sort_order harus lebih besar dari 0",
+		})
+		return
+	}
+	if input.SortOrder == 0 {
+		sortOrder, err := nextSortOrder(&models.AC{})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"message": "gagal menentukan urutan data AC",
+				"error":   err.Error(),
+			})
+			return
+		}
+		input.SortOrder = sortOrder
+	}
+
 	if err := config.DB.Create(&input).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"message": "gagal menyimpan data AC",
@@ -71,7 +89,7 @@ func GetACs(c *gin.Context) {
 	offset := (page - 1) * limit
 	totalPage := int(math.Ceil(float64(totalRows) / float64(limit)))
 
-	if err := query.Limit(limit).Offset(offset).Find(&acs).Error; err != nil {
+	if err := query.Order("sort_order ASC").Order("id ASC").Limit(limit).Offset(offset).Find(&acs).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"message": "gagal mengambil data AC",
 			"error":   err.Error(),
@@ -124,11 +142,12 @@ func UpdateAC(c *gin.Context) {
 
 	// Struct sementara tanpa binding:"required" agar bisa update sebagian field saja
 	var input struct {
-		Type     string `json:"type"`
-		Title    string `json:"title"`
-		LinkURL  string `json:"link_url"`
-		Date     string `json:"date"`
-		Description  string `json:"description"`
+		Type        string `json:"type"`
+		Title       string `json:"title"`
+		LinkURL     string `json:"link_url"`
+		Date        string `json:"date"`
+		Description string `json:"description"`
+		SortOrder   *int   `json:"sort_order"`
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -150,6 +169,15 @@ func UpdateAC(c *gin.Context) {
 	}
 	if input.Description != "" {
 		ac.Description = input.Description
+	}
+	if input.SortOrder != nil {
+		if *input.SortOrder < 1 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"message": "sort_order harus lebih besar dari 0",
+			})
+			return
+		}
+		ac.SortOrder = *input.SortOrder
 	}
 
 	if err := config.DB.Save(&ac).Error; err != nil {

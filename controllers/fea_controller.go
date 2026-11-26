@@ -4,8 +4,8 @@ import (
 	"context"
 	"math"
 	"net/http"
-	"strconv"
 	"os"
+	"strconv"
 
 	"api/portodata/config"
 	"api/portodata/models"
@@ -22,6 +22,26 @@ func initImageKit() *imagekit.Client {
 }
 
 func CreateFeaturedProject(c *gin.Context) {
+	sortOrder, err := parseSortOrder(c.PostForm("sort_order"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"message": "sort_order harus berupa angka lebih besar dari 0",
+			"error":   err.Error(),
+		})
+		return
+	}
+	if sortOrder == nil {
+		defaultSortOrder, err := nextSortOrder(&models.FeaturedProject{})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"message": "gagal menentukan urutan featured project",
+				"error":   err.Error(),
+			})
+			return
+		}
+		sortOrder = &defaultSortOrder
+	}
+
 	// Ambil file gambar dari form-data dengan key "image"
 	file, header, err := c.Request.FormFile("image")
 	if err != nil {
@@ -50,12 +70,13 @@ func CreateFeaturedProject(c *gin.Context) {
 	project := models.FeaturedProject{
 		Title:       c.PostForm("title"),
 		Subtitle:    c.PostForm("subtitle"),
-		Detail:     c.PostForm("detail"),
+		Detail:      c.PostForm("detail"),
 		ImageURL:    uploadRes.URL,
 		ImageID:     uploadRes.FileID,
 		GithubURL:   c.PostForm("github_url"),
 		LinkedinURL: c.PostForm("linkedin_url"),
 		YoutubeURL:  c.PostForm("youtube_url"),
+		SortOrder:   *sortOrder,
 	}
 
 	if err := config.DB.Create(&project).Error; err != nil {
@@ -104,7 +125,7 @@ func GetFeaturedProjects(c *gin.Context) {
 	offset := (page - 1) * limit
 	totalPage := int(math.Ceil(float64(totalRows) / float64(limit)))
 
-	if err := query.Limit(limit).Offset(offset).Find(&projects).Error; err != nil {
+	if err := query.Order("sort_order ASC").Order("id ASC").Limit(limit).Offset(offset).Find(&projects).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"message": "gagal mengambil data featured project",
 			"error":   err.Error(),
@@ -154,6 +175,15 @@ func UpdateFeaturedProject(c *gin.Context) {
 		return
 	}
 
+	sortOrder, err := parseSortOrder(c.PostForm("sort_order"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"message": "sort_order harus berupa angka lebih besar dari 0",
+			"error":   err.Error(),
+		})
+		return
+	}
+
 	// Cek apakah user mengirim file gambar baru
 	file, header, err := c.Request.FormFile("image")
 	if err == nil {
@@ -198,6 +228,9 @@ func UpdateFeaturedProject(c *gin.Context) {
 	}
 	if youtubeURL := c.PostForm("youtube_url"); youtubeURL != "" {
 		project.YoutubeURL = youtubeURL
+	}
+	if sortOrder != nil {
+		project.SortOrder = *sortOrder
 	}
 
 	if err := config.DB.Save(&project).Error; err != nil {

@@ -21,6 +21,24 @@ func CreateExperience(c *gin.Context) {
 		return
 	}
 
+	if input.SortOrder < 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"message": "sort_order harus lebih besar dari 0",
+		})
+		return
+	}
+	if input.SortOrder == 0 {
+		sortOrder, err := nextSortOrder(&models.Experience{})
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"message": "gagal menentukan urutan experience",
+				"error":   err.Error(),
+			})
+			return
+		}
+		input.SortOrder = sortOrder
+	}
+
 	if err := config.DB.Create(&input).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"message": "gagal menyimpan data experience",
@@ -70,7 +88,7 @@ func GetExperiences(c *gin.Context) {
 	offset := (page - 1) * limit
 	totalPage := int(math.Ceil(float64(totalRows) / float64(limit)))
 
-	if err := query.Limit(limit).Offset(offset).Find(&experiences).Error; err != nil {
+	if err := query.Order("sort_order ASC").Order("id ASC").Limit(limit).Offset(offset).Find(&experiences).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"message": "gagal mengambil data experience",
 			"error":   err.Error(),
@@ -122,10 +140,11 @@ func UpdateExperience(c *gin.Context) {
 
 	// Struct sementara tanpa binding:"required" agar bisa update sebagian field saja
 	var input struct {
-		Title    string `json:"title"`
-		Subtitle string `json:"subtitle"`
-		Date     string `json:"date"`
-		Detail  string `json:"detail"`
+		Title     string `json:"title"`
+		Subtitle  string `json:"subtitle"`
+		Date      string `json:"date"`
+		Detail    string `json:"detail"`
+		SortOrder *int   `json:"sort_order"`
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -147,6 +166,15 @@ func UpdateExperience(c *gin.Context) {
 	}
 	if input.Detail != "" {
 		experience.Detail = input.Detail
+	}
+	if input.SortOrder != nil {
+		if *input.SortOrder < 1 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"message": "sort_order harus lebih besar dari 0",
+			})
+			return
+		}
+		experience.SortOrder = *input.SortOrder
 	}
 
 	if err := config.DB.Save(&experience).Error; err != nil {
